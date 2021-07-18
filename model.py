@@ -223,6 +223,8 @@ class PredictionConvolutions(nn.Module):
         self.loc_conv11_2 = nn.Conv2d(256, n_boxes['conv11_2'] * 4, kernel_size=3, padding=1)
 
         # Class prediction convolutions (predict classes in localization boxes)
+        # bouding box 를 추출하는 feature map 중 가장 마지막 크기가 (1, 1)인데 (3, 3) conv kernel로 진행해주어야 할 이유가 있는 것인지
+        # -> (1, 1)로 진행해주어도 되지 않을까?
         self.cl_conv4_3 = nn.Conv2d(512, n_boxes['conv4_3'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv7 = nn.Conv2d(1024, n_boxes['conv7'] * n_classes, kernel_size=3, padding=1)
         self.cl_conv8_2 = nn.Conv2d(512, n_boxes['conv8_2'] * n_classes, kernel_size=3, padding=1)
@@ -255,6 +257,10 @@ class PredictionConvolutions(nn.Module):
         :return: 8732 locations and class scores (i.e. w.r.t each prior box) for each image
         """
         batch_size = conv4_3_feats.size(0)
+        
+        # feature map 마다 추출하는 box 수 다르기 때문에 prediction 으로 반환되는 feature map 깊이 다름
+        # - (batch_size, num anchor box = f * f * n_box, num prediction) 으로 형상 변환
+        # - prediction: coordinates(4), classes(20 + 1)
 
         # Predict localization boxes' bounds (as offsets w.r.t prior-boxes)
         l_conv4_3 = self.loc_conv4_3(conv4_3_feats)  # (N, 16, 38, 38)
@@ -460,6 +466,8 @@ class SSD300(nn.Module):
             max_scores, best_label = predicted_scores[i].max(dim=1)  # (8732)
 
             # Check for each class
+            ## [0] background class -> detect 할 필요 X
+            ## batch 속 한 image 의 한 class 별로
             for c in range(1, self.n_classes):
                 # Keep only predicted boxes and scores where scores for this class are above the minimum score
                 class_scores = predicted_scores[i][:, c]  # (8732)
@@ -484,6 +492,8 @@ class SSD300(nn.Module):
                 suppress = torch.zeros((n_above_min_score), dtype=torch.uint8).to(device)  # (n_qualified)
 
                 # Consider each box in order of decreasing scores
+                ## box가 max_overlap 보다 크게 겹치는 것은 
+                ## 하나의 object를 여러 box가 가르키는 것으로 간주하고 
                 for box in range(class_decoded_locs.size(0)):
                     # If this box is already marked for suppression
                     if suppress[box] == 1:
@@ -547,6 +557,9 @@ class MultiBoxLoss(nn.Module):
         self.alpha = alpha
 
         self.smooth_l1 = nn.L1Loss()
+        ## 논문에 따라 nn.L1Loss -> SmoothL1Loss 수정해야할듯..
+        # self.smooth_l1 = nn.SmoothL1Loss()
+        
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
 
     def forward(self, predicted_locs, predicted_scores, boxes, labels):

@@ -1,3 +1,122 @@
+# Try Improvment
+1. train - val set 으로 구성해서 학습 추적
+## Reference
+1. [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325)
+2. [Deep Residual Learning for Image Recognition](https://arxiv.org/abs/1512.03385)
+
+
+# ToDo
+- [x] SSD 논문 리뷰, 아래 README 등을 보며 자세하게 이해
+- [x] SSD 논문
+- [x] Code 뜯어보기
+- [ ] train data 에서 validation set 을 나눠주고 parameter 를 통한 실험환경 세팅, TensorBoard 를 통한 train 추적 추가
+- [x] ResNet 논문 
+- [ ] ResNet 적용
+- [ ] SSD 에서 더 발전된 Object Detection 기법 살펴보기
+
+
+# Question
+> 논문 등을 보며 공부하고 남은 의문점 -> 이 Tutorial의 Code 뜯어보며 해결해보자
+
+- [x]  feature map 마다 추출하는 bounding box 개수가 다르므로 그 output 값의 depth가 다 다를텐데 그에 대한 처리가 어떻게 진행되는지 (1)
+    - (batch_size, num anchor box, num prediction) 으로 형상 변환
+    - prediction: coordinates(4), classes(20 + 1)
+- [x]  bouding box 를 추출하는 feature map 중 가장 작은 크기가 (1, 1)인데 (3, 3) conv filter로 진행해주어야 할 이유가 있는 것인지 
+  - 완전히 이해되지는 않았으나..
+  - 중심 부분에 0 padding으로 해서 그보다 큰 값으로 convolution filter 를 적용하는 것이 유의미한 효과가 있을 때가 있다고 한다.
+  - 주변보다 중심에 더 집중하도록 하는 효과...? 그에 대한 내용은 추후 공부를 통해 더 채워가보자.
+- [x]  bounding box를 추출하는 feature map 중 가장 마지막에는 그 다음 feature map이 없으므로 ($s_{k+1}$이 없기 때문에) $s_k' = \sqrt{s_k * s_{k+1}}$ 이 식을 계산할 수 없는데 그럼 어떻게 처리하고 있을지 (1)
+    - Tutorial code 의 구현을 봤을 때 $s_{k+1}$ 가 없을 때 (IndexError 발생 시) 1로 대체
+- [x]  loss 에서 $\hat{g}$ 에 대한 이해 (1)
+    - $l$ (prediction) 은 default box 가 얼마나 조정되야 할지에 대한 offset
+    - $\hat{g}$ 도 offset → default box 가 얼마나 움직여야 ground-truth 에 도달하는지
+- [ ]   `utils.gcxgcy_to_cxcy()` 에서 
+```python
+torch.cat([gcxgcy[:, :2] * priors_cxcy[:, 2:] / 10 + priors_cxcy[:, :2],  # c_x, c_y
+                      torch.exp(gcxgcy[:, 2:] / 5) * priors_cxcy[:, 2:]], 1) # w, h
+```
+`/10`, `/5` 는 왜 하는지?
+  - 해당 내용이 `utils.cxcy_to_gcxgcy()` 에 언급되어 있다.
+- [x] `train.py` 에서 왜 weights, bias 에 따라 learning rate 다르게 적용했는지? (1)
+```python 
+torch.optim.SGD(params=[{'params': biases, 'lr': 2 * lr}, {'params': not_biases}],
+                                    lr=lr, momentum=momentum, weight_decay=weight_decay)
+```
+  - learning rate 는 실험적으로 한 것일 듯...
+  - 이렇게 설정한 것에는 논문에 해당 실험결과 등 나와있을 것으로 생각된다.                      
+- [x] `ToTensor()` 가 값을 0~1 로 정규화도 진행하는 것 같은데, `Normalize()`도 진행해주는 이유 (1)
+  - image 는 원래 0~255 의 정해진 값을 가지고 있고 그것을 `ToTensor()`를 통해서  0~1 로 정규화 해주고 `Normalize()`를 통해서 그 데이터의 분포를 바꿔주는데 이미지의 데이터 분포를 바꿔주면 원래 0~255 사이 특정 값을 가진 이미지의 특성이 깨진다고 생각했다.
+  - 이미지도 학습하는 데이터의 분포에 따라 `Normalize()` 진행해주는 것이 좋다고 한다.
+- [x] `train.py` 안에 `decay_lr` 가 있는데 어느 정도 학습이 진행되면 learning rate 를 줄여주는 것 같다. Adam optimizer 를 이용하면 그 안에서 learning rate를 조절해주는 것으로 알고 있는데 learning rate decay 필요할까...? (1)
+  - https://stackoverflow.com/questions/39517431/should-we-do-learning-rate-decay-for-adam-optimizer
+  - Adam을 완전히 이해하고 있지 못 해서 잘 모르겠으나, 일단 해주는 것이 좋다는 것 같다.
+- [x] vgg 의 fc 가 있던 자리에 그냥 이전 feature map channel 크기를 input 으로 받는 conv layer 추가만 해주면 될 것 같은데 왜 fc to conv 를 하는 것이지...? (1)
+  - 기존 pretrained model 을 사용하기 위해서
+  - pretrained model 의 학습된 weights를 갖는 fc layers 를 conv layers 로 변경하는 것 이다.
+  - 그 과정에서 fc layer 의 weights 는 너무 많기 떄문에 일정 step 에 따라 선택적으로 weights를 취한다. 
+  - [x] 그렇다면  pre-trained vgg 의 fc layers 는 classification 을 위한 것인데 이를 변형하여 conv layers로 사용하는 것이 어떤 효과가 있을까? (2)
+    - 제대로 이해했는지 모르겠다... 일단은...!
+    - 아래 논문은 segmentation 에 대한 내용인데, 기존 classification 문제는 전체 이미지에 대해서 classification 을 진행하지만 segmentation (or object detection) 에서는 dense spatial score (이를 나는 해당 영역 마다의 class score 라고 이해했다) 가 필요했고 이를 위해서 기존 classification model 의 classification을 진행하기 위한 fc layers 를 convolutaion layers 로 변경하여 진행했다고 한다.
+    - 위와 같은 효과를 얻고 싶고 convolution layer 를 처음부터 학습하는 것은 expensive 하기 때문에 이와 같은 방법을 사용한 것으로 보인다.
+    - [Semantic Image Segmentation with Deep Convolutional Nets and Fully Connected CRFs](https://arxiv.org/abs/1412.7062)의 Sec.3.1 참고
+  - [x] `atrous algorithm` (2)
+    - SSD Paper Sec.3 BaseNetwork 에 이것이 사용됨이 쓰여져있다.
+    - 속도를 위해서 쓰여짐. 기존 vgg 그대로 pool5 를 (2, 2) - s2, fc6와 fc7을 subsampling하지 않고 그대로 사용, conv5_3 을 prediction 에  사용하는 것으로 추가하면 결과는 같으나 속도가 20% 정도 더 느려졌다고 한다. (논문 Sec.3.2)
+    - conv6 이 (7, 7) 에서 (3, 3) 으로 줄어들면서 구멍이 생겼다(일정 step 마다 선택적으로 weights 를 취해줘서...?). 그렇기 때문에 dilated or astrous 를 해주어야 한다. 원래는 3으로 해주어야 하지만 6으로 해주었는데, 이는 5번째 pooling layer 가 더 이상 사이즈를 줄이지 않기 때문인 것 같다.
+    - kernel size = (3, 3) 
+    - ssd의 conv6은 vgg의 fc6을 convolution으로 바꾼 것이다. 이떄 fc는 parameter가 많으므로 그대로 변경하면 (7\*7\*512)\*4096 만큼의 parameter를 갖게되고 그러면 이 fc의 receptive field 는 (7, 7, 512) 라고 볼 수 있다. 하지만 이는 계산이 너무 많아지게 되고 그렇기 때문에 이를 (3\*3\*512)\*1024 로 줄여주게 된다. 그리고 이때 이전과 같은 receptive field 를 갖기 위해서는 dilation = 3 으로 취해주어야 한다. 하지만 구현을 보면 dilation = 6 으로 해주었는데, 이는 이 conv6 앞에 pool 이 기존과 다르게 쓰여서 feature map resolution 을 줄이지 않게 되고 receptive field를 맞춰주기 위해서 dilation = 6 으로 사용한다.
+    - https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md
+    - https://dogfoottech.tistory.com/169
+    - https://eehoeskrap.tistory.com/459
+    - https://better-tomorrow.tistory.com/entry/Atrous-Convolution
+- [x] 현재 SSD에서는 각 featuremap마다 branch를 만들어서 box regression을 수행합니다. 해당 모듈의 역할은 무엇인가요? 해당 모듈의 역할을 바탕으로 anchor 갯수 증가가 도움이 될지 고민해보시면 좋을 것 같습니다. (1)
+  - anchor box 가 많아지면 ground truth를 찾아가는 box가 많기 때문에 성능이 높아질 것이라고 생각했다.
+    - 논문에서도 그정도까지 밖에 확인하지 못 했던 것 같다...
+    - SSD Paper Sec3.2 Multiple output layers at different resolutions is better.
+  - default box 는 각각 scale과 ratio 가 있는데 어떤 dataset 에 적용하느냐에 따라 object 들의 scale 과 ratio 도 다를 것이다. 알맞지 않은 scale 과 ratio 를 가진 box 가 많으면 anchor box 를 더 많이 조정해야되므로 정확도가 낮아지고 box가 많으므로 물론 모델 성능 또한 낮아질 것이다.
+- [x] loss를 구할 때 L1이 아니라 SmoothL1 을 사용하는 이유 (2)
+  - L1은 x=0 인 지점에서 미분 불가능한데 SmoothL1 은 전 영역에서 미분 가능하다.
+  - l2 loss 는 최적값을 찾아가기에 더 좋고, l1 loss 는 outlier에 robust하다고 한다. SmoothL1이 처음 도입된 fast-rcnn 을 보면 l2 loss 는 gradient exploding 을 막기 위해 careful한 learning rate 조정이 필요하고 smooth l1 으로 이러한 문제들을 해결하였다고 한다.
+  - https://bo-10000.tistory.com/44
+  - https://ganghee-lee.tistory.com/33
+  - https://atcold.github.io/pytorch-Deep-Learning/ko/week11/11-1/
+  - [Fast R-CNN](https://arxiv.org/abs/1504.08083) Sec.2.3 Multi-task loss 참고
+- [x] mAP 란...? (2)
+  - https://jonathan-hui.medium.com/map-mean-average-precision-for-object-detection-45c121a31173
+  - https://ctkim.tistory.com/79
+- [x] `model.py` 의 `SSD300.rescale_factors` 가 무슨 역할? 
+  - 우리는 여러 conv features를 사용한다. 이때 해당 feature 들의 값이 너무 차이나면 학습이 제대로 이루어지지 않는다고 한다. conv4_3_feats 의 output의 feature value는 aux_conv output (conv8_2, conv9_2, conv10_2, conv11_2) 에 비해 scale적인 측면에서 차이가 크기 때문에 학습이 제대로 이루어 지기 힘들다고 한다.
+    - the ”larger” features dominate the ”smaller” ones
+    - heavy parameter tuning will be required to achieve sufficient accuracy
+  - predict_conv로 입력 전 이를  L2-normalize를 적용하고 rescale_factors 값을 곱해줘서 비정상적인 feature value 차이로 인해 학습이 제대로 되지 않는 문제를 해결하였다고 한다.
+  - 뿐만 아니라 이를 통해 careful 한 weight initialization 과 parameter tuning 없이도 충분히 좋은 학습 결과도 얻을 수 있다고 한다.
+  - 이 rescale_factors는 학습되도록 하기 위해서 `nn.Parameter` 사용하였다.
+  - SSD Paper Sec.3.1 
+  - https://rain-bow.tistory.com/entry/Object-Detection-Object-Detection-%ED%8A%9C%ED%86%A0%EB%A6%AC%EC%96%BC-Implementation
+  - [ParseNet: Looking Wider to See Better](https://arxiv.org/abs/1506.04579) Sec.3.3
+- [x] `torch.Tensor.contiguous()` 역할 (2)
+  - https://f-future.tistory.com/entry/Pytorch-Contiguous
+- [x] 왜 extra feature layers 에서 1 * 1 conv 를 통해 channel 수를 줄였다가 다시 3 * 3 conv를 통해서 늘릴까? (2)
+  - ```python
+    # conv8 비교해봤을 때
+    no_using_conv1_ops = (1024 * 19 * 19) * (512 * 3 * 3)
+    using_conv1_ops = (1024 * 19 * 19) * (256 * 1 * 1) + (256 * 19 * 19) * (512 * 3 * 3)
+    print(f"channel 수를 줄이지 않았을 때 연산량: {no_using_conv1_ops}") # 1703411712
+    print(f"channel 수를 줄였을 때 연산량: {using_conv1_ops}") # 520486912
+
+    decrement = using_conv1_ops / no_using_conv1_ops * 100
+    print(f"감소량: {decrement: .2f}") # 30.56
+    ```
+  - GoogLeNet 에서도 사용되는 것
+  - BottleNeck 구조라고 불리는 듯
+  - 정보 손실은 최소화 하면서 channel 수를 줄여서 연산량을 줄일 수 있다.
+  - encode - decode 같은 느낌으로 봐도 좋을까?
+- [x] `collate_fn()` 는 무슨 역할? (2)
+    - batch 안에는 (image, box, label, difficulty) 가 있는데 image 는 (3, 300, 300) 으로 shape가 일정한데 나머지는 해당 이미지 안에 있는 object 수에 따라 형상(길이)가 다르므로 Tensor 로 Batch 처리해줄 수 없다. 그렇기 때문에 image를 제외한 나머지 데이터는 list로 반환해준다.
+
+
+# Content
+
 This is a **[PyTorch](https://pytorch.org) Tutorial to Object Detection**.
 
 This is the third in [a series of tutorials](https://github.com/sgrvinod/Deep-Tutorials-for-PyTorch) I'm writing about _implementing_ cool models on your own with the amazing PyTorch library.
