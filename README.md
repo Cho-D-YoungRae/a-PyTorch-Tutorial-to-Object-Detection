@@ -113,6 +113,7 @@ torch.optim.SGD(params=[{'params': biases, 'lr': 2 * lr}, {'params': not_biases}
   - encode - decode 같은 느낌으로 봐도 좋을까?
 - [x] `collate_fn()` 는 무슨 역할? (2)
     - batch 안에는 (image, box, label, difficulty) 가 있는데 image 는 (3, 300, 300) 으로 shape가 일정한데 나머지는 해당 이미지 안에 있는 object 수에 따라 형상(길이)가 다르므로 Tensor 로 Batch 처리해줄 수 없다. 그렇기 때문에 image를 제외한 나머지 데이터는 list로 반환해준다.
+- [ ] convolution layer, fc layer 에 bias 를 사용할 때와 사용하지 않을 때의 차이
 
 
 # Content
